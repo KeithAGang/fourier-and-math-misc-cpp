@@ -1,4 +1,5 @@
 {
     "C_Cpp.default.configurationProvider": "mesonbuild.mesonbuild",
-    "C_Cpp.default.compileCommands": "c:\\Users\\Keith\\Documents\\Projects\\imgui-starter\\builddir/compile_commands.json"
+    "C_Cpp.default.compileCommands": "/home/keithgang/Documents/projects/fourier-and-math-misc-cpp/builddir/compile_commands.json",
+    "mesonbuild.configureOnOpen": true
 }

@@ -180,6 +180,10 @@ int main(int, char**)
             
             static float scale = 1.0f;
             ImGui::SliderFloat("Scale", &scale, 0.5f, 2.0f);
+            static int num_circles = 2;
+            ImGui::SliderInt("Num Circles", &num_circles, 1, 360);
+            static int func_type = 0;
+            ImGui::Combo("Function", &func_type, "Sine\0Cosine\0Tan\0Csc\0Sec\0Cot\0");
 
             // Get current draw list
             ImDrawList* draw_list = ImGui::GetWindowDrawList();
@@ -188,47 +192,76 @@ int main(int, char**)
             ImVec2 center = ImGui::GetCursorScreenPos();
             center.x += 100 * scale; // offset from cursor
             center.y += 150 * scale;
-            float r1 = 60.0f * scale;
-            float r2 = 30.0f * scale;
             int segments = 64; // Higher = smoother
 
             double time = ImGui::GetTime();
 
-            // Circle 1 (Large)
-            float angle1 = (float)(-time * 1.0);
-            ImVec2 p1 = ImVec2(center.x + r1 * cosf(angle1), center.y + r1 * sinf(angle1));
-            
-            draw_list->AddCircle(center, r1, IM_COL32(255, 255, 255, 100), segments);
-            draw_list->AddLine(center, p1, IM_COL32(255, 255, 255, 100));
+            ImVec2 prev_pos = center;
+            ImVec2 current_pos = center;
+            float base_radius = 60.0f * scale;
+            float max_extent = 0.0f;
+            ImVec2 last_circle_center = center;
 
-            // Circle 2 (Small, circling the larger one)
-            float angle2 = (float)(-time * 3.0);
-            ImVec2 p2 = ImVec2(p1.x + r2 * cosf(angle2), p1.y + r2 * sinf(angle2));
+            for (int i = 0; i < num_circles; i++)
+            {
+                float n = (float)(2 * i + 1);
+                float radius = base_radius * (4.0f / (n * 3.14159f));
+                max_extent += radius;
+                float angle = (float)(-time * n);
+                current_pos.x = prev_pos.x + radius * cosf(angle);
+                current_pos.y = prev_pos.y + radius * sinf(angle);
+                draw_list->AddCircle(prev_pos, radius, IM_COL32(255, 255, 255, 100), segments);
+                draw_list->AddLine(prev_pos, current_pos, IM_COL32(255, 255, 255, 100));
+                last_circle_center = prev_pos;
+                prev_pos = current_pos;
+            }
 
-            draw_list->AddCircle(p1, r2, IM_COL32(255, 255, 0, 255), segments);
-            draw_list->AddLine(p1, p2, IM_COL32(255, 255, 0, 255));
-
-            // Tangent on smaller circle at p2
-            ImVec2 radius_vec = ImVec2(p2.x - p1.x, p2.y - p1.y);
+            // Tangent on last circle
+            ImVec2 radius_vec = ImVec2(current_pos.x - last_circle_center.x, current_pos.y - last_circle_center.y);
             ImVec2 tangent_vec = ImVec2(-radius_vec.y, radius_vec.x); // Perpendicular
             float len = sqrtf(tangent_vec.x * tangent_vec.x + tangent_vec.y * tangent_vec.y);
             if (len > 0) { tangent_vec.x /= len; tangent_vec.y /= len; }
             
             float tangent_len = 50.0f * scale;
-            ImVec2 t1 = ImVec2(p2.x - tangent_vec.x * tangent_len, p2.y - tangent_vec.y * tangent_len);
-            ImVec2 t2 = ImVec2(p2.x + tangent_vec.x * tangent_len, p2.y + tangent_vec.y * tangent_len);
+            ImVec2 t1 = ImVec2(current_pos.x - tangent_vec.x * tangent_len, current_pos.y - tangent_vec.y * tangent_len);
+            ImVec2 t2 = ImVec2(current_pos.x + tangent_vec.x * tangent_len, current_pos.y + tangent_vec.y * tangent_len);
             
             draw_list->AddLine(t1, t2, IM_COL32(0, 255, 255, 255), 2.0f);
-            draw_list->AddCircleFilled(p2, 4.0f * scale, IM_COL32(255, 0, 0, 255));
+            draw_list->AddCircleFilled(current_pos, 4.0f * scale, IM_COL32(255, 0, 0, 255));
+
+            // Calculate value to plot
+            float val = 0.0f;
+            float dx = current_pos.x - center.x;
+            float dy = current_pos.y - center.y;
+            float epsilon = 0.001f;
+
+            switch (func_type)
+            {
+                case 0: val = dy; break; // Sine
+                case 1: val = dx; break; // Cosine
+                case 2: val = (fabsf(dx) > epsilon) ? (dy / dx) * base_radius : ((dy > 0) ? 2000.0f : -2000.0f); break; // Tan
+                case 3: val = (fabsf(dy) > epsilon) ? (base_radius * base_radius) / dy : ((dy > 0) ? 2000.0f : -2000.0f); break; // Csc
+                case 4: val = (fabsf(dx) > epsilon) ? (base_radius * base_radius) / dx : ((dx > 0) ? 2000.0f : -2000.0f); break; // Sec
+                case 5: val = (fabsf(dy) > epsilon) ? (dx / dy) * base_radius : ((dx > 0) ? 2000.0f : -2000.0f); break; // Cot
+            }
+
+            if (val > 4000.0f) val = 4000.0f;
+            if (val < -4000.0f) val = -4000.0f;
+            float plot_y = center.y + val;
 
             // Graph
             static std::vector<float> wave_data;
-            if (wave_data.size() > 500)
-                wave_data.erase(wave_data.begin());
-            wave_data.push_back(p2.y);
+            
+            float graph_x_start = center.x + max_extent + 50.0f * scale;
+            float avail_width = ImGui::GetContentRegionAvail().x;
+            float graph_width = avail_width - (graph_x_start - ImGui::GetCursorScreenPos().x);
+            if (graph_width < 10.0f) graph_width = 10.0f;
 
-            float graph_x_start = center.x + r1 + r2 + 50.0f * scale;
-            draw_list->AddLine(p2, ImVec2(graph_x_start, p2.y), IM_COL32(255, 255, 255, 50));
+            if (wave_data.size() > (size_t)graph_width)
+                wave_data.erase(wave_data.begin(), wave_data.begin() + (wave_data.size() - (size_t)graph_width));
+            wave_data.push_back(plot_y);
+
+            draw_list->AddLine(current_pos, ImVec2(graph_x_start, plot_y), IM_COL32(255, 255, 255, 50));
 
             if (wave_data.size() > 1)
             {
@@ -242,7 +275,7 @@ int main(int, char**)
                 }
             }
 
-            ImGui::Dummy(ImVec2(700 * scale, 300 * scale));
+            ImGui::Dummy(ImVec2(graph_x_start - ImGui::GetCursorScreenPos().x + graph_width, 300 * scale));
             ImGui::Text("Epicycles with Tangent and Real-time Graph");
             if (ImGui::Button("Close Me"))
                 show_circle_window = false;
